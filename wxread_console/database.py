@@ -71,7 +71,25 @@ class Database:
                     last_validation_error TEXT,
                     updated_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS schedule_state (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    daily_time TEXT NOT NULL DEFAULT '01:00',
+                    timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+                    last_claimed_date TEXT,
+                    last_result TEXT NOT NULL DEFAULT 'never',
+                    last_message TEXT,
+                    updated_at TEXT NOT NULL
+                );
                 """
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schedule_state
+                (id, enabled, daily_time, timezone, last_result, updated_at)
+                VALUES (1, 0, '01:00', 'Asia/Shanghai', 'never', ?)
+                """,
+                (utc_now(),),
             )
 
     def create_run(self, trigger: str, read_num: int) -> int:
@@ -199,6 +217,51 @@ class Database:
         with self.connect() as connection:
             row = connection.execute("SELECT * FROM config_state WHERE id = 1").fetchone()
             return None if row is None else dict(row)
+
+    def get_schedule_state(self) -> dict[str, Any]:
+        with self.connect() as connection:
+            row = connection.execute("SELECT * FROM schedule_state WHERE id = 1").fetchone()
+            if row is None:
+                raise RuntimeError("schedule_state is not initialized")
+            return dict(row)
+
+    def save_schedule(self, enabled: bool, daily_time: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE schedule_state
+                SET enabled = ?, daily_time = ?, timezone = 'Asia/Shanghai',
+                    last_result = CASE WHEN ? THEN last_result ELSE 'disabled' END,
+                    last_message = CASE WHEN ? THEN last_message ELSE '自动运行已关闭' END,
+                    updated_at = ?
+                WHERE id = 1
+                """,
+                (int(enabled), daily_time, int(enabled), int(enabled), utc_now()),
+            )
+
+    def claim_schedule_date(self, local_date: str) -> bool:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE schedule_state
+                SET last_claimed_date = ?, updated_at = ?
+                WHERE id = 1 AND enabled = 1
+                  AND (last_claimed_date IS NULL OR last_claimed_date != ?)
+                """,
+                (local_date, utc_now(), local_date),
+            )
+            return cursor.rowcount == 1
+
+    def update_schedule_result(self, result: str, message: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE schedule_state
+                SET last_result = ?, last_message = ?, updated_at = ?
+                WHERE id = 1
+                """,
+                (result, message, utc_now()),
+            )
 
     def mark_interrupted_runs(self) -> None:
         now = utc_now()

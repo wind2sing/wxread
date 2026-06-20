@@ -13,7 +13,7 @@
           <tr>
             <td data-label="编号">#{{ run.id }}</td>
             <td data-label="状态"><span class="status-badge {{ run.status }}">{{ status_label(run.status) }}</span></td>
-            <td data-label="触发方式">{{ "手动" if run.trigger == "manual" else run.trigger }}</td>
+            <td data-label="触发方式">{{ "自动" if run.trigger == "scheduled" else "手动" }}</td>
             <td data-label="开始时间">{{ run.started_at|datetime_cn }}</td>
             <td data-label="完成进度">{{ run.completed_steps or 0 }}/{{ run.read_num }}</td>
             <td data-label="耗时">{{ run.duration_seconds|duration }}</td>

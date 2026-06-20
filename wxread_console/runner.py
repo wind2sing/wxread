@@ -18,9 +18,13 @@ class RunService:
         self.repo_root = repo_root
         self.timeout_seconds = timeout_seconds
 
-    def start_background(self, environment: Mapping[str, str]) -> int:
+    def start_background(
+        self,
+        environment: Mapping[str, str],
+        trigger: str = "manual",
+    ) -> int:
         run_id = self.database.create_run(
-            "manual", int(environment.get("READ_NUM", "40"))
+            trigger, int(environment.get("READ_NUM", "40"))
         )
         thread = threading.Thread(
             target=self._execute,

@@ -65,4 +65,9 @@
     {% endif %}
   </article>
 </section>
+<section class="panel schedule-overview">
+  <div><p class="eyebrow">AUTOMATION</p><h2>每日自动运行</h2><p class="muted">{{ schedule.last_message or "尚未触发" }}</p></div>
+  <div class="schedule-meta"><strong>{{ "已启用" if schedule.enabled else "未启用" }}</strong><span>{{ schedule.daily_time }} · 北京时间</span><span>下次：{{ next_auto_run|datetime_cn if next_auto_run else "—" }}</span></div>
+  <a class="button button-secondary" href="{{ url_for('config_page') }}">设置</a>
+</section>
 {% endblock %}

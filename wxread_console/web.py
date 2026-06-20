@@ -21,6 +21,7 @@ from flask import (
 from .curl_parser import CurlParseError, parse_weread_curl
 from .database import Database, RunAlreadyActive
 from .runner import RunService
+from .scheduler import ScheduleService, SchedulerLoop, next_run_at
 from .secret_store import SecretStore
 from .settings import Settings
 
@@ -58,10 +59,15 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
     database.mark_interrupted_runs()
     store = SecretStore(settings.secrets_path)
     runner = RunService(database, settings.repo_root, settings.run_timeout_seconds)
+    schedule_service = ScheduleService(database, store, runner)
+    scheduler_loop = SchedulerLoop(schedule_service)
+    scheduler_loop.start()
     app.extensions["wxread_settings"] = settings
     app.extensions["wxread_database"] = database
     app.extensions["wxread_secret_store"] = store
     app.extensions["wxread_runner"] = runner
+    app.extensions["wxread_schedule_service"] = schedule_service
+    app.extensions["wxread_scheduler_loop"] = scheduler_loop
 
     def login_required(view: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(view)
@@ -93,7 +99,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         if not value:
             return "—"
         try:
-            parsed = datetime.fromisoformat(value)
+            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(value)
             return parsed.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%m-%d %H:%M:%S")
         except (ValueError, TypeError):
             return str(value)
@@ -134,6 +140,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
     @login_required
     def dashboard():
         config_state = database.get_config_state()
+        schedule = database.get_schedule_state()
         runs = database.list_runs(limit=7)
         terminal = [
             run
@@ -152,14 +159,17 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             runs=runs,
             latest_run=runs[0] if runs else None,
             success_rate=success_rate,
+            schedule=schedule,
+            next_auto_run=next_run_at(schedule),
         )
 
     @app.route("/config", methods=["GET", "POST"])
     @login_required
     def config_page():
         state = database.get_config_state()
+        schedule = database.get_schedule_state()
         if request.method == "GET":
-            return render_template("config.html", state=state)
+            return render_template("config.html", state=state, schedule=schedule)
 
         require_csrf()
         existing = store.load()
@@ -176,7 +186,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             if push_method not in PUSH_METHODS:
                 raise ValueError("推送方式无效")
         except (CurlParseError, ValueError) as exc:
-            return render_template("config.html", state=state, error=str(exc)), 400
+            return render_template("config.html", state=state, schedule=schedule, error=str(exc)), 400
 
         values = {
             "WXREAD_CURL_BASH": curl_bash,
@@ -196,7 +206,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         }
         missing = _missing_push_value(push_method, values)
         if missing:
-            return render_template("config.html", state=state, error=missing), 400
+            return render_template("config.html", state=state, schedule=schedule, error=missing), 400
 
         store.save(values)
         database.save_config_state(
@@ -206,6 +216,24 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             push_summary="已配置" if push_method else "未启用",
         )
         flash("配置已验证并保存", "success")
+        return redirect(url_for("config_page"))
+
+    @app.post("/schedule")
+    @login_required
+    def schedule_page():
+        require_csrf()
+        enabled = request.form.get("enabled") == "1"
+        daily_time = request.form.get("daily_time", "01:00")
+        try:
+            datetime.strptime(daily_time, "%H:%M")
+        except ValueError:
+            flash("每日运行时间格式无效", "error")
+            return redirect(url_for("config_page"))
+        if enabled and not store.load().get("WXREAD_CURL_BASH"):
+            flash("启用自动运行前，请先保存微信读书 curl 配置", "error")
+            return redirect(url_for("config_page"))
+        database.save_schedule(enabled, daily_time)
+        flash("自动运行设置已保存", "success")
         return redirect(url_for("config_page"))
 
     @app.route("/runs", methods=["GET", "POST"])

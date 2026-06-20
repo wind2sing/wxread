@@ -3,7 +3,7 @@
 {% block content %}
 <div data-running="{{ 'true' if run.status == 'running' else 'false' }}">
   <header class="page-header">
-    <div><p class="eyebrow">RUN #{{ run.id }}</p><h1>运行详情</h1><p class="muted">{{ run.started_at|datetime_cn }}</p></div>
+    <div><p class="eyebrow">RUN #{{ run.id }} · {{ "自动" if run.trigger == "scheduled" else "手动" }}</p><h1>运行详情</h1><p class="muted">{{ run.started_at|datetime_cn }}</p></div>
     <span class="status-badge large {{ run.status }}">{{ status_label(run.status) }}</span>
   </header>
   <section class="detail-grid">

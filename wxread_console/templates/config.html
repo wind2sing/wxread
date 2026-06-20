@@ -61,4 +61,20 @@
     {% endif %}
   </aside>
 </section>
+
+<section class="schedule-section">
+  <form method="post" action="{{ url_for('schedule_page') }}" class="panel stack schedule-panel">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="switch-row">
+      <div><p class="eyebrow">AUTOMATION</p><h2>每日自动运行</h2><p class="muted">控制台在线时按北京时间触发；当天错过会补跑一次。</p></div>
+      <label class="switch"><input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}><span></span></label>
+    </div>
+    <div class="field">
+      <label for="daily_time">每日运行时间</label>
+      <input id="daily_time" name="daily_time" type="time" value="{{ schedule.daily_time }}" required>
+      <small>固定时区：北京时间 Asia/Shanghai</small>
+    </div>
+    <button class="button button-primary" type="submit">保存自动运行设置</button>
+  </form>
+</section>
 {% endblock %}

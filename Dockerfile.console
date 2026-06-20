@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir -r requirements-console.txt
 COPY main.py config.py push.py log_utils.py ./
 COPY wxread_console ./wxread_console
 
-RUN useradd --create-home --uid 10001 appuser +    && mkdir -p /app/data +    && chown -R appuser:appuser /app
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data \
+    && chown -R appuser:appuser /app
 
 USER appuser
 VOLUME ["/app/data"]
