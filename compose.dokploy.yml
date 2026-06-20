@@ -1,0 +1,17 @@
+services:
+  wxread:
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+    restart: unless-stopped
+    environment:
+      WXREAD_CONSOLE_ENV: production
+      WXREAD_DATA_DIR: /app/data
+      WXREAD_ADMIN_PASSWORD: ${WXREAD_ADMIN_PASSWORD}
+      WXREAD_SESSION_SECRET: ${WXREAD_SESSION_SECRET}
+      WXREAD_RUN_TIMEOUT_SECONDS: ${WXREAD_RUN_TIMEOUT_SECONDS:-14400}
+    volumes:
+      - wxread_data:/app/data
+
+volumes:
+  wxread_data:
