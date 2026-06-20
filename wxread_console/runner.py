@@ -42,7 +42,7 @@ class RunService:
         )
         thread = threading.Thread(
             target=self._execute,
-            args=(run_id, self.repo_root / "main.py", environment),
+            args=(run_id, environment),
             daemon=True,
             name=f"wxread-run-{run_id}",
         )
@@ -63,18 +63,19 @@ class RunService:
     def _execute(
         self,
         run_id: int,
-        script: Path,
         environment: Mapping[str, str],
     ) -> None:
         prepared_environment = dict(environment)
         self._refresh_and_persist_cookie(run_id, prepared_environment)
+        if self.secret_store is not None:
+            prepared_environment["WXREAD_SECRETS_PATH"] = str(self.secret_store.path)
         child_environment = os.environ.copy()
         child_environment.update(prepared_environment)
         child_environment["PYTHONUNBUFFERED"] = "1"
         chunks: list[str] = []
         try:
             process = subprocess.Popen(
-                [sys.executable, str(script)],
+                [sys.executable, "-m", "wxread_console.upstream_runner"],
                 cwd=self.repo_root,
                 env=child_environment,
                 stdout=subprocess.PIPE,
