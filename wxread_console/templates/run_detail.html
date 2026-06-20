@@ -19,7 +19,7 @@
       {% if logs %}
         {% for log in logs %}<div class="log-line"><time>{{ log.created_at|datetime_cn }}</time><span>{{ log.message }}</span></div>{% endfor %}
       {% else %}
-        <p class="muted">暂时没有日志；任务完成后会显示捕获到的输出。</p>
+        <p class="muted">暂时没有日志；任务刚启动时可能需要等待几秒。</p>
       {% endif %}
     </div>
   </section>

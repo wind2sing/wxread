@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import re
+import select
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Mapping
 
@@ -43,30 +45,56 @@ class RunService:
     ) -> None:
         child_environment = os.environ.copy()
         child_environment.update(environment)
+        child_environment["PYTHONUNBUFFERED"] = "1"
+        chunks: list[str] = []
         try:
-            result = subprocess.run(
+            process = subprocess.Popen(
                 [sys.executable, str(script)],
                 cwd=self.repo_root,
                 env=child_environment,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 text=True,
-                timeout=self.timeout_seconds,
-                check=False,
+                bufsize=0,
             )
-            outputs = (("stdout", result.stdout), ("stderr", result.stderr))
-            combined = "\n".join(text for _, text in outputs if text)
-            for stream, output in outputs:
-                for line in output.splitlines():
-                    self.database.append_log(run_id, stream, "INFO", redact_text(line))
+            if process.stdout is None:
+                raise RuntimeError("无法捕获阅读脚本输出")
 
-            progress = [
-                int(value)
-                for value in re.findall(r"阅读进度:\s*第\s*(\d+)/\d+\s*次", combined)
-            ]
-            if progress:
-                self.database.update_completed_steps(run_id, max(progress))
+            started = time.monotonic()
+            buffer = ""
+            while True:
+                if time.monotonic() - started > self.timeout_seconds:
+                    process.kill()
+                    remaining = process.communicate(timeout=5)[0] or ""
+                    if remaining:
+                        chunks.append(remaining)
+                        buffer = self._consume_output(run_id, buffer + remaining)
+                    if buffer.strip():
+                        self._record_message(run_id, buffer)
+                    self.database.finish_run(
+                        run_id, "timeout", None, "运行超时，请检查网络或 READ_NUM"
+                    )
+                    return
 
-            if result.returncode != 0:
+                ready, _, _ = select.select([process.stdout], [], [], 0.5)
+                if ready:
+                    chunk = process.stdout.read(1)
+                    if chunk:
+                        chunks.append(chunk)
+                        buffer = self._consume_output(run_id, buffer + chunk)
+
+                return_code = process.poll()
+                if return_code is not None:
+                    remaining = process.stdout.read() or ""
+                    if remaining:
+                        chunks.append(remaining)
+                        buffer = self._consume_output(run_id, buffer + remaining)
+                    if buffer.strip():
+                        self._record_message(run_id, buffer)
+                    break
+
+            combined = "".join(chunks)
+            if return_code != 0:
                 status = "failed"
                 summary = "脚本异常退出，请查看脱敏日志"
             elif "阅读脚本已完成" in combined and "推送失败" in combined:
@@ -75,17 +103,22 @@ class RunService:
             else:
                 status = "success"
                 summary = None
-            self.database.finish_run(run_id, status, result.returncode, summary)
-        except subprocess.TimeoutExpired as exc:
-            output = "\n".join(
-                value.decode() if isinstance(value, bytes) else value or ""
-                for value in (exc.stdout, exc.stderr)
-            )
-            if output:
-                self.database.append_log(run_id, "stderr", "ERROR", redact_text(output))
-            self.database.finish_run(
-                run_id, "timeout", None, "运行超时，请检查网络或 READ_NUM"
-            )
+            self.database.finish_run(run_id, status, return_code, summary)
         except Exception as exc:
             self.database.append_log(run_id, "stderr", "ERROR", redact_text(str(exc)))
             self.database.finish_run(run_id, "failed", None, "控制台启动脚本失败")
+
+    def _consume_output(self, run_id: int, text: str) -> str:
+        parts = re.split(r"[\r\n]", text)
+        for message in parts[:-1]:
+            self._record_message(run_id, message)
+        return parts[-1]
+
+    def _record_message(self, run_id: int, message: str) -> None:
+        clean = message.strip()
+        if not clean:
+            return
+        self.database.append_log(run_id, "stdout", "INFO", redact_text(clean))
+        progress = re.search(r"阅读进度:\s*第\s*(\d+)/\d+\s*次", clean)
+        if progress:
+            self.database.update_completed_steps(run_id, int(progress.group(1)))
