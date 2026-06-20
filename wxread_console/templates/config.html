@@ -2,7 +2,7 @@
 {% block title %}配置 · wxread Console{% endblock %}
 {% block content %}
 <header class="page-header">
-  <div><p class="eyebrow">CONFIGURATION</p><h1>运行配置</h1><p class="muted">敏感内容仅保存在服务器本地，页面不会回显原文。</p></div>
+  <div><p class="eyebrow">CONFIGURATION</p><h1>全局配置</h1><p class="muted">Cookie 和推送配置全局适用；阅读次数在手动运行或自动运行里分别设置。</p></div>
 </header>
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
@@ -15,12 +15,7 @@
       <textarea id="curl_bash" name="curl_bash" rows="9" placeholder="{{ '留空以保留当前配置' if state else '粘贴从浏览器开发者工具复制的 curl bash' }}" {{ '' if state else 'required' }}></textarea>
       <small>必须来自 https://weread.qq.com/web/book/read。</small>
     </div>
-    <div class="form-row">
-      <div class="field">
-        <label for="read_num">阅读次数</label>
-        <input id="read_num" name="read_num" type="number" min="1" max="480" value="{{ state.read_num if state else 40 }}" required>
-        <small>每次约 30 秒，40 次约 20 分钟。</small>
-      </div>
+    <div class="form-row single">
       <div class="field">
         <label for="push_method">推送方式</label>
         <select id="push_method" name="push_method">
@@ -51,8 +46,6 @@
     {% if state %}
       <dl>
         <div><dt>Cookie 摘要</dt><dd>{{ state.curl_summary }}</dd></div>
-        <div><dt>阅读次数</dt><dd>{{ state.read_num }}</dd></div>
-        <div><dt>预计时长</dt><dd>{{ (state.read_num * 0.5)|round(1) }} 分钟</dd></div>
         <div><dt>推送</dt><dd>{{ state.push_summary }}</dd></div>
         <div><dt>验证时间</dt><dd>{{ state.last_validated_at|datetime_cn }}</dd></div>
       </dl>
@@ -73,6 +66,11 @@
       <label for="daily_time">每日运行时间</label>
       <input id="daily_time" name="daily_time" type="time" value="{{ schedule.daily_time }}" required>
       <small>固定时区：北京时间 Asia/Shanghai</small>
+    </div>
+    <div class="field">
+      <label for="schedule_read_num">自动运行阅读次数</label>
+      <input id="schedule_read_num" name="read_num" type="number" min="1" max="480" value="{{ schedule.read_num }}" required>
+      <small>每次约 30 秒，40 次约 20 分钟。</small>
     </div>
     <button class="button button-primary" type="submit">保存自动运行设置</button>
   </form>

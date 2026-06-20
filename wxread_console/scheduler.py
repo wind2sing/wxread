@@ -44,6 +44,7 @@ class ScheduleService:
         if not values.get("WXREAD_CURL_BASH"):
             self.database.update_schedule_result("missing_config", "缺少微信读书 curl 配置")
             return "missing_config"
+        values["READ_NUM"] = str(state["read_num"])
         try:
             run_id = self.runner.start_background(values, trigger="scheduled")
         except RunAlreadyActive:

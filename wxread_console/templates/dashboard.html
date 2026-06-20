@@ -7,9 +7,16 @@
     <h1>控制台总览</h1>
     <p class="muted">查看配置健康度与最近运行情况。</p>
   </div>
-  {% if config_state %}
-    <form method="post" action="{{ url_for('runs_page') }}">
+  {% if latest_run and latest_run.status == "running" %}
+    <form method="post" action="{{ url_for('cancel_run', run_id=latest_run.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="button button-danger" type="submit" data-confirm="确定停止当前运行？">停止当前运行</button>
+    </form>
+  {% elif config_state %}
+    <form method="post" action="{{ url_for('runs_page') }}" class="run-now-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="manual_read_num">阅读次数</label>
+      <input id="manual_read_num" name="read_num" type="number" min="1" max="480" value="{{ config_state.read_num or 40 }}" required>
       <button class="button button-primary" type="submit" data-confirm="确定立即运行一次？">立即运行</button>
     </form>
   {% endif %}
@@ -39,7 +46,7 @@
     <div class="panel-heading"><div><p class="eyebrow">QUICK START</p><h2>快速操作</h2></div></div>
     {% if config_state %}
       <div class="config-summary">
-        <div><span>阅读次数</span><strong>{{ config_state.read_num }}</strong></div>
+        <div><span>手动默认次数</span><strong>{{ config_state.read_num }}</strong></div>
         <div><span>推送渠道</span><strong>{{ config_state.push_method or "未启用" }}</strong></div>
         <div><span>最近验证</span><strong>{{ config_state.last_validated_at|datetime_cn }}</strong></div>
       </div>
@@ -67,7 +74,7 @@
 </section>
 <section class="panel schedule-overview">
   <div><p class="eyebrow">AUTOMATION</p><h2>每日自动运行</h2><p class="muted">{{ schedule.last_message or "尚未触发" }}</p></div>
-  <div class="schedule-meta"><strong>{{ "已启用" if schedule.enabled else "未启用" }}</strong><span>{{ schedule.daily_time }} · 北京时间</span><span>下次：{{ next_auto_run|datetime_cn if next_auto_run else "—" }}</span></div>
+  <div class="schedule-meta"><strong>{{ "已启用" if schedule.enabled else "未启用" }}</strong><span>{{ schedule.daily_time }} · 北京时间 · {{ schedule.read_num }} 次</span><span>下次：{{ next_auto_run|datetime_cn if next_auto_run else "—" }}</span></div>
   <a class="button button-secondary" href="{{ url_for('config_page') }}">设置</a>
 </section>
 {% endblock %}

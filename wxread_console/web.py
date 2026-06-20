@@ -179,9 +179,6 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         )
         try:
             parsed = parse_weread_curl(curl_bash)
-            read_num = int(request.form.get("read_num", "40"))
-            if not 1 <= read_num <= 480:
-                raise ValueError("READ_NUM 必须在 1 到 480 之间")
             push_method = request.form.get("push_method", "").strip().lower()
             if push_method not in PUSH_METHODS:
                 raise ValueError("推送方式无效")
@@ -190,7 +187,6 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
 
         values = {
             "WXREAD_CURL_BASH": curl_bash,
-            "READ_NUM": str(read_num),
             "PUSH_METHOD": push_method,
             "PUSHPLUS_TOKEN": _saved_or_submitted(request, existing, "pushplus_token", "PUSHPLUS_TOKEN"),
             "WXPUSHER_SPT": _saved_or_submitted(request, existing, "wxpusher_spt", "WXPUSHER_SPT"),
@@ -209,9 +205,10 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             return render_template("config.html", state=state, schedule=schedule, error=missing), 400
 
         store.save(values)
+        manual_read_num = state["read_num"] if state else 40
         database.save_config_state(
             curl_summary=parsed.cookie_summary,
-            read_num=read_num,
+            read_num=manual_read_num,
             push_method=push_method,
             push_summary="已配置" if push_method else "未启用",
         )
@@ -225,6 +222,13 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         enabled = request.form.get("enabled") == "1"
         daily_time = request.form.get("daily_time", "01:00")
         try:
+            read_num = int(request.form.get("read_num", "40"))
+            if not 1 <= read_num <= 480:
+                raise ValueError
+        except ValueError:
+            flash("自动运行阅读次数必须在 1 到 480 之间", "error")
+            return redirect(url_for("config_page"))
+        try:
             datetime.strptime(daily_time, "%H:%M")
         except ValueError:
             flash("每日运行时间格式无效", "error")
@@ -232,7 +236,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         if enabled and not store.load().get("WXREAD_CURL_BASH"):
             flash("启用自动运行前，请先保存微信读书 curl 配置", "error")
             return redirect(url_for("config_page"))
-        database.save_schedule(enabled, daily_time)
+        database.save_schedule(enabled, daily_time, read_num)
         flash("自动运行设置已保存", "success")
         return redirect(url_for("config_page"))
 
@@ -246,12 +250,46 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
                 flash("请先保存微信读书 curl 配置", "error")
                 return redirect(url_for("config_page"))
             try:
+                read_num = int(request.form.get("read_num", "40"))
+                if not 1 <= read_num <= 480:
+                    raise ValueError
+            except ValueError:
+                flash("手动运行阅读次数必须在 1 到 480 之间", "error")
+                return redirect(url_for("dashboard"))
+            values["READ_NUM"] = str(read_num)
+            state = database.get_config_state()
+            if state:
+                database.save_config_state(
+                    curl_summary=state["curl_summary"],
+                    read_num=read_num,
+                    push_method=state["push_method"],
+                    push_summary=state["push_summary"],
+                )
+            try:
                 run_id = runner.start_background(values)
             except RunAlreadyActive:
                 flash("已有任务正在运行，请等待完成后再试", "warning")
                 return redirect(url_for("dashboard"))
             return redirect(url_for("run_detail", run_id=run_id))
         return render_template("runs.html", runs=database.list_runs())
+
+    @app.post("/runs/<int:run_id>/cancel")
+    @login_required
+    def cancel_run(run_id: int):
+        require_csrf()
+        try:
+            run = database.get_run(run_id)
+        except KeyError:
+            abort(404)
+        if run["status"] != "running":
+            flash("该任务已经结束，无法停止", "warning")
+            return redirect(url_for("run_detail", run_id=run_id))
+        if runner.cancel_run(run_id):
+            flash("已发送停止指令", "success")
+        else:
+            database.cancel_run(run_id, "当前进程不可停止，可能已被重启中断")
+            flash("当前进程不可停止，已标记为中断", "warning")
+        return redirect(url_for("run_detail", run_id=run_id))
 
     @app.get("/runs/<int:run_id>")
     @login_required

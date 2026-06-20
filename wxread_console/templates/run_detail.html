@@ -4,7 +4,15 @@
 <div data-running="{{ 'true' if run.status == 'running' else 'false' }}">
   <header class="page-header">
     <div><p class="eyebrow">RUN #{{ run.id }} · {{ "自动" if run.trigger == "scheduled" else "手动" }}</p><h1>运行详情</h1><p class="muted">{{ run.started_at|datetime_cn }}</p></div>
-    <span class="status-badge large {{ run.status }}">{{ status_label(run.status) }}</span>
+    <div class="page-actions">
+      <span class="status-badge large {{ run.status }}">{{ status_label(run.status) }}</span>
+      {% if run.status == "running" %}
+        <form method="post" action="{{ url_for('cancel_run', run_id=run.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="button button-danger" type="submit" data-confirm="确定停止当前运行？">停止运行</button>
+        </form>
+      {% endif %}
+    </div>
   </header>
   <section class="detail-grid">
     <article class="panel metric"><span>阅读目标</span><strong>{{ run.read_num }} 次</strong></article>

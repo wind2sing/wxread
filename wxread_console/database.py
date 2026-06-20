@@ -74,6 +74,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS schedule_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     enabled INTEGER NOT NULL DEFAULT 0,
+                    read_num INTEGER NOT NULL DEFAULT 40,
                     daily_time TEXT NOT NULL DEFAULT '01:00',
                     timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
                     last_claimed_date TEXT,
@@ -83,11 +84,19 @@ class Database:
                 );
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(schedule_state)")
+            }
+            if "read_num" not in columns:
+                connection.execute(
+                    "ALTER TABLE schedule_state ADD COLUMN read_num INTEGER NOT NULL DEFAULT 40"
+                )
             connection.execute(
                 """
                 INSERT OR IGNORE INTO schedule_state
-                (id, enabled, daily_time, timezone, last_result, updated_at)
-                VALUES (1, 0, '01:00', 'Asia/Shanghai', 'never', ?)
+                (id, enabled, read_num, daily_time, timezone, last_result, updated_at)
+                VALUES (1, 0, 40, '01:00', 'Asia/Shanghai', 'never', ?)
                 """,
                 (utc_now(),),
             )
@@ -162,6 +171,27 @@ class Database:
                 ),
             )
 
+    def cancel_run(self, run_id: int, message: str = "用户手动停止") -> None:
+        ended_at = utc_now()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT started_at FROM runs WHERE id = ? AND status = 'running'",
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return
+            started = datetime.fromisoformat(row["started_at"])
+            ended = datetime.fromisoformat(ended_at)
+            connection.execute(
+                """
+                UPDATE runs
+                SET status = 'cancelled', ended_at = ?, duration_seconds = ?,
+                    exit_code = NULL, error_summary = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (ended_at, (ended - started).total_seconds(), message, ended_at, run_id),
+            )
+
     def get_run(self, run_id: int) -> dict[str, Any]:
         with self.connect() as connection:
             row = connection.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
@@ -225,18 +255,18 @@ class Database:
                 raise RuntimeError("schedule_state is not initialized")
             return dict(row)
 
-    def save_schedule(self, enabled: bool, daily_time: str) -> None:
+    def save_schedule(self, enabled: bool, daily_time: str, read_num: int) -> None:
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE schedule_state
-                SET enabled = ?, daily_time = ?, timezone = 'Asia/Shanghai',
+                SET enabled = ?, daily_time = ?, read_num = ?, timezone = 'Asia/Shanghai',
                     last_result = CASE WHEN ? THEN last_result ELSE 'disabled' END,
                     last_message = CASE WHEN ? THEN last_message ELSE '自动运行已关闭' END,
                     updated_at = ?
                 WHERE id = 1
                 """,
-                (int(enabled), daily_time, int(enabled), int(enabled), utc_now()),
+                (int(enabled), daily_time, read_num, int(enabled), int(enabled), utc_now()),
             )
 
     def claim_schedule_date(self, local_date: str) -> bool:
