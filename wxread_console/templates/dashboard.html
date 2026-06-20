@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}总览 · wxread Console{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">DASHBOARD</p>
+    <h1>控制台总览</h1>
+    <p class="muted">查看配置健康度与最近运行情况。</p>
+  </div>
+  {% if config_state %}
+    <form method="post" action="{{ url_for('runs_page') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="button button-primary" type="submit" data-confirm="确定立即运行一次？">立即运行</button>
+    </form>
+  {% endif %}
+</header>
+
+<section class="stats-grid">
+  <article class="stat-card">
+    <span class="stat-icon success">✓</span>
+    <div><p>Cookie 状态</p><strong>{{ config_state.curl_summary if config_state else "未配置" }}</strong></div>
+  </article>
+  <article class="stat-card">
+    <span class="stat-icon {{ latest_run.status if latest_run else 'idle' }}">●</span>
+    <div><p>最近运行</p><strong>{{ status_label(latest_run.status) if latest_run else "暂无记录" }}</strong></div>
+  </article>
+  <article class="stat-card">
+    <span class="stat-icon brand">时</span>
+    <div><p>预计阅读</p><strong>{{ (config_state.read_num * 0.5)|round(1) if config_state else "—" }} 分钟</strong></div>
+  </article>
+  <article class="stat-card">
+    <span class="stat-icon warning">%</span>
+    <div><p>最近成功率</p><strong>{{ success_rate ~ "%" if success_rate is not none else "—" }}</strong></div>
+  </article>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">QUICK START</p><h2>快速操作</h2></div></div>
+    {% if config_state %}
+      <div class="config-summary">
+        <div><span>阅读次数</span><strong>{{ config_state.read_num }}</strong></div>
+        <div><span>推送渠道</span><strong>{{ config_state.push_method or "未启用" }}</strong></div>
+        <div><span>最近验证</span><strong>{{ config_state.last_validated_at|datetime_cn }}</strong></div>
+      </div>
+      <a class="button button-secondary" href="{{ url_for('config_page') }}">更新配置</a>
+    {% else %}
+      <div class="empty-state"><span>⌁</span><h3>还没有运行配置</h3><p>先粘贴微信读书 read 接口的 curl bash。</p><a class="button button-primary" href="{{ url_for('config_page') }}">开始配置</a></div>
+    {% endif %}
+  </article>
+  <article class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">RECENT RUNS</p><h2>最近运行</h2></div><a href="{{ url_for('runs_page') }}">查看全部</a></div>
+    {% if runs %}
+      <div class="run-list">
+        {% for run in runs %}
+          <a href="{{ url_for('run_detail', run_id=run.id) }}" class="run-row">
+            <span class="status-dot {{ run.status }}"></span>
+            <span><strong>#{{ run.id }} · {{ status_label(run.status) }}</strong><small>{{ run.started_at|datetime_cn }}</small></span>
+            <span class="run-duration">{{ run.duration_seconds|duration }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state compact"><p>还没有运行记录。</p></div>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

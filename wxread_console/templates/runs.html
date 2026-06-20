@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}运行记录 · wxread Console{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div><p class="eyebrow">RUN HISTORY</p><h1>运行记录</h1><p class="muted">查看每次运行的结果、耗时和错误摘要。</p></div>
+</header>
+<section class="panel table-panel">
+  {% if runs %}
+    <table>
+      <thead><tr><th>编号</th><th>状态</th><th>触发方式</th><th>开始时间</th><th>完成进度</th><th>耗时</th><th></th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+          <tr>
+            <td data-label="编号">#{{ run.id }}</td>
+            <td data-label="状态"><span class="status-badge {{ run.status }}">{{ status_label(run.status) }}</span></td>
+            <td data-label="触发方式">{{ "手动" if run.trigger == "manual" else run.trigger }}</td>
+            <td data-label="开始时间">{{ run.started_at|datetime_cn }}</td>
+            <td data-label="完成进度">{{ run.completed_steps or 0 }}/{{ run.read_num }}</td>
+            <td data-label="耗时">{{ run.duration_seconds|duration }}</td>
+            <td><a href="{{ url_for('run_detail', run_id=run.id) }}">详情</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty-state"><h3>暂无运行记录</h3><p>保存配置后，从总览页立即运行一次。</p></div>
+  {% endif %}
+</section>
+{% endblock %}

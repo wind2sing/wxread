@@ -1,0 +1,21 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV WXREAD_CONSOLE_ENV=production
+ENV WXREAD_DATA_DIR=/app/data
+
+COPY requirements-console.txt ./
+RUN pip install --no-cache-dir -r requirements-console.txt
+
+COPY main.py config.py push.py log_utils.py ./
+COPY wxread_console ./wxread_console
+
+RUN useradd --create-home --uid 10001 appuser +    && mkdir -p /app/data +    && chown -R appuser:appuser /app
+
+USER appuser
+VOLUME ["/app/data"]
+EXPOSE 8080
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "4", "wxread_console.web:create_app()"]

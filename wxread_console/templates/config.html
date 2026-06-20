@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}配置 · wxread Console{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div><p class="eyebrow">CONFIGURATION</p><h1>运行配置</h1><p class="muted">敏感内容仅保存在服务器本地，页面不会回显原文。</p></div>
+</header>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+<section class="content-grid">
+  <form method="post" class="panel stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="curl_bash">微信读书 read 接口 curl bash</label>
+      <textarea id="curl_bash" name="curl_bash" rows="9" placeholder="{{ '留空以保留当前配置' if state else '粘贴从浏览器开发者工具复制的 curl bash' }}" {{ '' if state else 'required' }}></textarea>
+      <small>必须来自 https://weread.qq.com/web/book/read。</small>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label for="read_num">阅读次数</label>
+        <input id="read_num" name="read_num" type="number" min="1" max="480" value="{{ state.read_num if state else 40 }}" required>
+        <small>每次约 30 秒，40 次约 20 分钟。</small>
+      </div>
+      <div class="field">
+        <label for="push_method">推送方式</label>
+        <select id="push_method" name="push_method">
+          {% for value, label in [('', '不推送'), ('pushplus', 'PushPlus'), ('wxpusher', 'WxPusher'), ('telegram', 'Telegram'), ('serverchan', 'ServerChan')] %}
+            <option value="{{ value }}" {{ 'selected' if state and state.push_method == value }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <details class="secret-details">
+      <summary>推送密钥 <span>已保存的密钥留空即可保留</span></summary>
+      <div class="secret-grid">
+        <input name="pushplus_token" type="password" placeholder="PushPlus token" autocomplete="new-password">
+        <input name="wxpusher_spt" type="password" placeholder="WxPusher SPT" autocomplete="new-password">
+        <input name="telegram_bot_token" type="password" placeholder="Telegram bot token" autocomplete="new-password">
+        <input name="telegram_chat_id" type="password" placeholder="Telegram chat ID" autocomplete="new-password">
+        <input name="serverchan_spt" type="password" placeholder="ServerChan SendKey" autocomplete="new-password">
+      </div>
+    </details>
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">验证并保存</button>
+    </div>
+  </form>
+
+  <aside class="panel config-status">
+    <p class="eyebrow">CURRENT STATE</p>
+    <h2>当前状态</h2>
+    {% if state %}
+      <dl>
+        <div><dt>Cookie 摘要</dt><dd>{{ state.curl_summary }}</dd></div>
+        <div><dt>阅读次数</dt><dd>{{ state.read_num }}</dd></div>
+        <div><dt>预计时长</dt><dd>{{ (state.read_num * 0.5)|round(1) }} 分钟</dd></div>
+        <div><dt>推送</dt><dd>{{ state.push_summary }}</dd></div>
+        <div><dt>验证时间</dt><dd>{{ state.last_validated_at|datetime_cn }}</dd></div>
+      </dl>
+    {% else %}
+      <div class="empty-state compact"><p>尚未保存配置。</p></div>
+    {% endif %}
+  </aside>
+</section>
+{% endblock %}
