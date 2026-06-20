@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}运行 #{{ run.id }} · wxread Console{% endblock %}
 {% block content %}
-<div data-running="{{ 'true' if run.status == 'running' else 'false' }}">
+<div data-run-detail data-run-id="{{ run.id }}" data-running="{{ 'true' if run.status == 'running' else 'false' }}">
   <header class="page-header">
     <div><p class="eyebrow">RUN #{{ run.id }} · {{ "自动" if run.trigger == "scheduled" else "手动" }}</p><h1>运行详情</h1><p class="muted">{{ run.started_at|datetime_cn }}</p></div>
     <div class="page-actions">
-      <span class="status-badge large {{ run.status }}">{{ status_label(run.status) }}</span>
+      <span class="status-badge large {{ run.status }}" data-run-status>{{ status_label(run.status) }}</span>
       {% if run.status == "running" %}
         <form method="post" action="{{ url_for('cancel_run', run_id=run.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -16,18 +16,18 @@
   </header>
   <section class="detail-grid">
     <article class="panel metric"><span>阅读目标</span><strong>{{ run.read_num }} 次</strong></article>
-    <article class="panel metric"><span>已完成</span><strong>{{ run.completed_steps or 0 }} 次</strong></article>
-    <article class="panel metric"><span>耗时</span><strong>{{ run.duration_seconds|duration }}</strong></article>
-    <article class="panel metric"><span>退出码</span><strong>{{ run.exit_code if run.exit_code is not none else "—" }}</strong></article>
+    <article class="panel metric"><span>已完成</span><strong data-run-completed>{{ run.completed_steps or 0 }} 次</strong><div class="progress-track"><span data-run-progress-bar style="width: {{ progress.percent }}%"></span></div><small data-run-progress>{{ progress.summary }}</small></article>
+    <article class="panel metric"><span>耗时</span><strong data-run-duration>{{ run.duration_seconds|duration }}</strong></article>
+    <article class="panel metric"><span>退出码</span><strong data-run-exit-code>{{ run.exit_code if run.exit_code is not none else "—" }}</strong></article>
   </section>
-  {% if run.error_summary %}<div class="alert alert-error">{{ run.error_summary }}</div>{% endif %}
+  <div data-run-error>{% if run.error_summary %}<div class="alert alert-error">{{ run.error_summary }}</div>{% endif %}</div>
   <section class="panel">
-    <div class="panel-heading"><div><p class="eyebrow">REDACTED LOG</p><h2>脱敏日志</h2></div>{% if run.status == 'running' %}<span class="live-indicator">自动刷新中</span>{% endif %}</div>
-    <div class="log-view">
+    <div class="panel-heading"><div><p class="eyebrow">REDACTED LOG</p><h2>脱敏日志</h2></div><span class="live-indicator" data-live-indicator {% if run.status != 'running' %}hidden{% endif %}>自动刷新中</span></div>
+    <div class="log-view" data-log-view>
       {% if logs %}
         {% for log in logs %}<div class="log-line"><time>{{ log.created_at|datetime_cn }}</time><span>{{ log.message }}</span></div>{% endfor %}
       {% else %}
-        <p class="muted">暂时没有日志；任务刚启动时可能需要等待几秒。</p>
+        <p class="muted" data-empty-log>暂时没有日志；任务刚启动时可能需要等待几秒。</p>
       {% endif %}
     </div>
   </section>

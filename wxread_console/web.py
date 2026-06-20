@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Callable, Mapping
 from zoneinfo import ZoneInfo
@@ -11,6 +11,7 @@ from flask import (
     Flask,
     abort,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -96,21 +97,11 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
 
     @app.template_filter("datetime_cn")
     def datetime_cn(value: str | None) -> str:
-        if not value:
-            return "—"
-        try:
-            parsed = value if isinstance(value, datetime) else datetime.fromisoformat(value)
-            return parsed.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            return str(value)
+        return _format_datetime_cn(value)
 
     @app.template_filter("duration")
     def duration(value: float | None) -> str:
-        if value is None:
-            return "—"
-        seconds = int(value)
-        minutes, seconds = divmod(seconds, 60)
-        return f"{minutes}分 {seconds}秒" if minutes else f"{seconds}秒"
+        return _format_duration(value)
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
@@ -142,6 +133,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         config_state = database.get_config_state()
         schedule = database.get_schedule_state()
         runs = database.list_runs(limit=7)
+        recent_runs = runs[:5]
         terminal = [
             run
             for run in runs
@@ -157,7 +149,9 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             "dashboard.html",
             config_state=config_state,
             runs=runs,
+            recent_runs=recent_runs,
             latest_run=runs[0] if runs else None,
+            latest_progress=_run_progress(runs[0]) if runs else None,
             success_rate=success_rate,
             schedule=schedule,
             schedule_message=_schedule_message(schedule, runs),
@@ -335,9 +329,93 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             "run_detail.html",
             run=run,
             logs=database.get_logs(run_id),
+            progress=_run_progress(run),
+        )
+
+    @app.get("/runs/<int:run_id>/snapshot")
+    @login_required
+    def run_snapshot(run_id: int):
+        try:
+            run = database.get_run(run_id)
+        except KeyError:
+            abort(404)
+        logs = database.get_logs(run_id)
+        elapsed_seconds = _elapsed_seconds(run) if run["status"] == "running" else run["duration_seconds"]
+        return jsonify(
+            {
+                "run": {
+                    "id": run["id"],
+                    "status": run["status"],
+                    "status_label": STATUS_LABELS.get(run["status"], run["status"]),
+                    "completed_steps": run["completed_steps"] or 0,
+                    "read_num": run["read_num"],
+                    "duration": _format_duration(elapsed_seconds),
+                    "exit_code": run["exit_code"] if run["exit_code"] is not None else "—",
+                    "error_summary": run["error_summary"],
+                },
+                "progress": _run_progress(run),
+                "logs": [
+                    {
+                        "id": log["id"],
+                        "created_at": _format_datetime_cn(log["created_at"]),
+                        "message": log["message"],
+                    }
+                    for log in logs
+                ],
+            }
         )
 
     return app
+
+
+def _format_datetime_cn(value: str | None) -> str:
+    if not value:
+        return "—"
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(value)
+        return parsed.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return str(value)
+
+
+def _format_duration(value: float | None) -> str:
+    if value is None:
+        return "—"
+    seconds = max(0, int(value))
+    minutes, seconds = divmod(seconds, 60)
+    return f"{minutes}分 {seconds}秒" if minutes else f"{seconds}秒"
+
+
+def _elapsed_seconds(run: Mapping[str, Any]) -> float:
+    try:
+        started = datetime.fromisoformat(str(run["started_at"]))
+    except (KeyError, ValueError, TypeError):
+        return 0
+    return max(0.0, (datetime.now(timezone.utc) - started.astimezone(timezone.utc)).total_seconds())
+
+
+def _run_progress(run: Mapping[str, Any]) -> dict[str, Any]:
+    read_num = max(1, int(run.get("read_num") or 1))
+    completed = min(read_num, max(0, int(run.get("completed_steps") or 0)))
+    percent = min(100, round(completed / read_num * 100))
+    remaining_seconds = None
+    if run.get("status") == "running":
+        elapsed = _elapsed_seconds(run)
+        if completed > 0:
+            remaining_seconds = elapsed / completed * max(0, read_num - completed)
+        else:
+            remaining_seconds = max(0.0, float(run.get("estimated_minutes") or 0) * 60 - elapsed)
+    return {
+        "completed": completed,
+        "total": read_num,
+        "percent": percent,
+        "remaining": _format_duration(remaining_seconds) if remaining_seconds is not None else "—",
+        "summary": (
+            f"{completed}/{read_num} · 预计剩余 {_format_duration(remaining_seconds)}"
+            if remaining_seconds is not None
+            else f"{completed}/{read_num}"
+        ),
+    }
 
 
 def _saved_or_submitted(

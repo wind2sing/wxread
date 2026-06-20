@@ -29,10 +29,16 @@
   </article>
   <article class="stat-card">
     <span class="stat-icon {{ latest_run.status if latest_run else 'idle' }}">●</span>
-    <div><p>最近运行</p><strong>{{ status_label(latest_run.status) if latest_run else "暂无记录" }}</strong></div>
+    <div>
+      <p>最近运行</p>
+      <strong>{{ status_label(latest_run.status) if latest_run else "暂无记录" }}</strong>
+      {% if latest_run and latest_run.status == "running" and latest_progress %}
+        <small>{{ latest_progress.summary }}</small>
+      {% endif %}
+    </div>
   </article>
   <article class="stat-card">
-    <span class="stat-icon brand">时</span>
+    <span class="stat-icon brand stat-icon-clock" aria-hidden="true"></span>
     <div><p>预计阅读</p><strong>{{ (config_state.read_num * 0.5)|round(1) if config_state else "—" }} 分钟</strong></div>
   </article>
   <article class="stat-card">
@@ -57,13 +63,20 @@
   </article>
   <article class="panel">
     <div class="panel-heading"><div><p class="eyebrow">RECENT RUNS</p><h2>最近运行</h2></div><a href="{{ url_for('runs_page') }}">查看全部</a></div>
-    {% if runs %}
+    {% if recent_runs %}
       <div class="run-list">
-        {% for run in runs %}
+        {% for run in recent_runs %}
           <a href="{{ url_for('run_detail', run_id=run.id) }}" class="run-row">
             <span class="status-dot {{ run.status }}"></span>
-            <span><strong>#{{ run.id }} · {{ status_label(run.status) }}</strong><small>{{ run.started_at|datetime_cn }}</small></span>
-            <span class="run-duration">{{ run.duration_seconds|duration }}</span>
+            <span>
+              <strong>#{{ run.id }} · {{ status_label(run.status) }}</strong>
+              <small>{{ run.started_at|datetime_cn }}</small>
+              {% if run.status == "running" %}
+                {% set progress = latest_progress if latest_run and run.id == latest_run.id else none %}
+                {% if progress %}<small>{{ progress.summary }}</small>{% endif %}
+              {% endif %}
+            </span>
+            <span class="run-duration">{{ run.duration_seconds|duration if run.status != "running" else "运行中" }}</span>
           </a>
         {% endfor %}
       </div>
