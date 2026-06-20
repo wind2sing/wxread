@@ -10,15 +10,24 @@ import time
 from pathlib import Path
 from typing import Mapping
 
+from .cookie_refresh import CookieRefreshError, refresh_wrskey_in_curl
 from .database import Database
+from .secret_store import SecretStore
 from .redaction import redact_text
 
 
 class RunService:
-    def __init__(self, database: Database, repo_root: Path, timeout_seconds: float):
+    def __init__(
+        self,
+        database: Database,
+        repo_root: Path,
+        timeout_seconds: float,
+        secret_store: SecretStore | None = None,
+    ):
         self.database = database
         self.repo_root = repo_root
         self.timeout_seconds = timeout_seconds
+        self.secret_store = secret_store
         self._processes: dict[int, subprocess.Popen[str]] = {}
         self._cancelled: set[int] = set()
         self._lock = threading.Lock()
@@ -57,8 +66,10 @@ class RunService:
         script: Path,
         environment: Mapping[str, str],
     ) -> None:
+        prepared_environment = dict(environment)
+        self._refresh_and_persist_cookie(run_id, prepared_environment)
         child_environment = os.environ.copy()
-        child_environment.update(environment)
+        child_environment.update(prepared_environment)
         child_environment["PYTHONUNBUFFERED"] = "1"
         chunks: list[str] = []
         try:
@@ -157,3 +168,43 @@ class RunService:
         progress = re.search(r"阅读进度:\s*第\s*(\d+)/\d+\s*次", clean)
         if progress:
             self.database.update_completed_steps(run_id, int(progress.group(1)))
+
+    def _refresh_and_persist_cookie(
+        self,
+        run_id: int,
+        environment: dict[str, str],
+    ) -> None:
+        if self.secret_store is None:
+            return
+        saved = self.secret_store.load()
+        curl_bash = saved.get("WXREAD_CURL_BASH") or environment.get("WXREAD_CURL_BASH")
+        if not curl_bash:
+            return
+        try:
+            result = refresh_wrskey_in_curl(curl_bash)
+        except (CookieRefreshError, ValueError) as exc:
+            self.database.append_log(
+                run_id,
+                "stdout",
+                "INFO",
+                f"控制台预刷新 wr_skey 未成功，将交给原脚本刷新：{redact_text(str(exc))}",
+            )
+            return
+
+        saved["WXREAD_CURL_BASH"] = result.curl_bash
+        self.secret_store.save(saved)
+        environment["WXREAD_CURL_BASH"] = result.curl_bash
+        state = self.database.get_config_state()
+        if state:
+            self.database.save_config_state(
+                curl_summary=result.cookie_summary,
+                read_num=state["read_num"],
+                push_method=state["push_method"],
+                push_summary=state["push_summary"],
+            )
+        self.database.append_log(
+            run_id,
+            "stdout",
+            "INFO",
+            f"控制台已刷新并保存 wr_skey：{result.wr_skey[:2]}***",
+        )

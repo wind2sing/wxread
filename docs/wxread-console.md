@@ -7,6 +7,7 @@
 - 单管理员密码登录
 - 粘贴微信读书 read 接口的完整 curl bash
 - 全局配置 Cookie 与推送渠道
+- 运行前自动刷新并保存 `wr_skey`
 - 手动运行时输入本次阅读次数
 - 每日自动运行可独立配置阅读次数
 - 手动停止正在运行的阅读任务
@@ -62,6 +63,12 @@
 - WXREAD_CONSOLE_ENV：development 或 production
 
 微信读书 curl、READ_NUM 和推送 token 可登录控制台后填写，不需要再手工编辑 config.py。
+
+## Cookie 续期
+
+每次手动或自动运行前，控制台会先用已保存的 curl 调用微信读书 renewal 接口，拿到新的 `wr_skey` 后写回 `data/secrets.json`。这样保存的 Cookie 会随运行持续更新。
+
+原 upstream `main.py` 启动后仍会执行自己的刷新逻辑；控制台保存的是运行前预刷新得到的有效 `wr_skey`，不会依赖日志里脱敏后的 `qN***` 文本。
 
 ## 每日自动运行
 

@@ -58,7 +58,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
     database.initialize()
     database.mark_interrupted_runs()
     store = SecretStore(settings.secrets_path)
-    runner = RunService(database, settings.repo_root, settings.run_timeout_seconds)
+    runner = RunService(database, settings.repo_root, settings.run_timeout_seconds, store)
     schedule_service = ScheduleService(database, store, runner)
     scheduler_loop = SchedulerLoop(schedule_service)
     scheduler_loop.start()
