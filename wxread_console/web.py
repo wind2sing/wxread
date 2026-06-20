@@ -163,14 +163,16 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             next_auto_run=next_run_at(schedule),
         )
 
-    @app.route("/config", methods=["GET", "POST"])
+    @app.get("/config")
     @login_required
     def config_page():
         state = database.get_config_state()
         schedule = database.get_schedule_state()
-        if request.method == "GET":
-            return render_template("config.html", state=state, schedule=schedule)
+        return render_template("config.html", state=state, schedule=schedule)
 
+    @app.post("/config/cookie")
+    @login_required
+    def cookie_config_page():
         require_csrf()
         existing = store.load()
         curl_bash = (
@@ -179,14 +181,38 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
         )
         try:
             parsed = parse_weread_curl(curl_bash)
-            push_method = request.form.get("push_method", "").strip().lower()
-            if push_method not in PUSH_METHODS:
-                raise ValueError("推送方式无效")
-        except (CurlParseError, ValueError) as exc:
+        except CurlParseError as exc:
+            state = database.get_config_state()
+            schedule = database.get_schedule_state()
             return render_template("config.html", state=state, schedule=schedule, error=str(exc)), 400
 
+        values = dict(existing)
+        values["WXREAD_CURL_BASH"] = curl_bash
+        store.save(values)
+        state = database.get_config_state()
+        manual_read_num = state["read_num"] if state else 40
+        push_method = values.get("PUSH_METHOD", "")
+        database.save_config_state(
+            curl_summary=parsed.cookie_summary,
+            read_num=manual_read_num,
+            push_method=push_method,
+            push_summary="已配置" if push_method else "未启用",
+        )
+        flash("Cookie 配置已保存", "success")
+        return redirect(url_for("config_page"))
+
+    @app.post("/config/push")
+    @login_required
+    def push_config_page():
+        require_csrf()
+        existing = store.load()
+        state = database.get_config_state()
+        schedule = database.get_schedule_state()
+        push_method = request.form.get("push_method", "").strip().lower()
+        if push_method not in PUSH_METHODS:
+            return render_template("config.html", state=state, schedule=schedule, error="推送方式无效"), 400
         values = {
-            "WXREAD_CURL_BASH": curl_bash,
+            "WXREAD_CURL_BASH": existing.get("WXREAD_CURL_BASH", ""),
             "PUSH_METHOD": push_method,
             "PUSHPLUS_TOKEN": _saved_or_submitted(request, existing, "pushplus_token", "PUSHPLUS_TOKEN"),
             "WXPUSHER_SPT": _saved_or_submitted(request, existing, "wxpusher_spt", "WXPUSHER_SPT"),
@@ -205,14 +231,14 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             return render_template("config.html", state=state, schedule=schedule, error=missing), 400
 
         store.save(values)
-        manual_read_num = state["read_num"] if state else 40
-        database.save_config_state(
-            curl_summary=parsed.cookie_summary,
-            read_num=manual_read_num,
-            push_method=push_method,
-            push_summary="已配置" if push_method else "未启用",
-        )
-        flash("配置已验证并保存", "success")
+        if state:
+            database.save_config_state(
+                curl_summary=state["curl_summary"],
+                read_num=state["read_num"],
+                push_method=push_method,
+                push_summary="已配置" if push_method else "未启用",
+            )
+        flash("推送配置已保存", "success")
         return redirect(url_for("config_page"))
 
     @app.post("/schedule")
@@ -229,14 +255,20 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             flash("自动运行阅读次数必须在 1 到 480 之间", "error")
             return redirect(url_for("config_page"))
         try:
-            datetime.strptime(daily_time, "%H:%M")
+            scheduled_time = datetime.strptime(daily_time, "%H:%M").time()
         except ValueError:
             flash("每日运行时间格式无效", "error")
             return redirect(url_for("config_page"))
         if enabled and not store.load().get("WXREAD_CURL_BASH"):
             flash("启用自动运行前，请先保存微信读书 curl 配置", "error")
             return redirect(url_for("config_page"))
-        database.save_schedule(enabled, daily_time, read_num)
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        last_claimed_date = (
+            now.date().isoformat()
+            if enabled and scheduled_time <= now.time()
+            else None
+        )
+        database.save_schedule(enabled, daily_time, read_num, last_claimed_date)
         flash("自动运行设置已保存", "success")
         return redirect(url_for("config_page"))
 

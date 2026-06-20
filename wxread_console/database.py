@@ -255,18 +255,33 @@ class Database:
                 raise RuntimeError("schedule_state is not initialized")
             return dict(row)
 
-    def save_schedule(self, enabled: bool, daily_time: str, read_num: int) -> None:
+    def save_schedule(
+        self,
+        enabled: bool,
+        daily_time: str,
+        read_num: int,
+        last_claimed_date: str | None = None,
+    ) -> None:
         with self.connect() as connection:
             connection.execute(
                 """
                 UPDATE schedule_state
                 SET enabled = ?, daily_time = ?, read_num = ?, timezone = 'Asia/Shanghai',
+                    last_claimed_date = ?,
                     last_result = CASE WHEN ? THEN last_result ELSE 'disabled' END,
                     last_message = CASE WHEN ? THEN last_message ELSE '自动运行已关闭' END,
                     updated_at = ?
                 WHERE id = 1
                 """,
-                (int(enabled), daily_time, read_num, int(enabled), int(enabled), utc_now()),
+                (
+                    int(enabled),
+                    daily_time,
+                    read_num,
+                    last_claimed_date,
+                    int(enabled),
+                    int(enabled),
+                    utc_now(),
+                ),
             )
 
     def claim_schedule_date(self, local_date: str) -> bool:

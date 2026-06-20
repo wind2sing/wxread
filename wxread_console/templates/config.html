@@ -8,13 +8,22 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
 <section class="content-grid">
-  <form method="post" class="panel stack">
+  <form method="post" action="{{ url_for('cookie_config_page') }}" class="panel stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div><p class="eyebrow">COOKIE</p><h2>微信读书 Cookie</h2><p class="muted">只保存微信读书 read 接口 curl，不会改动推送配置。</p></div>
     <div class="field">
       <label for="curl_bash">微信读书 read 接口 curl bash</label>
       <textarea id="curl_bash" name="curl_bash" rows="9" placeholder="{{ '留空以保留当前配置' if state else '粘贴从浏览器开发者工具复制的 curl bash' }}" {{ '' if state else 'required' }}></textarea>
       <small>必须来自 https://weread.qq.com/web/book/read。</small>
     </div>
+    <div class="form-actions">
+      <button class="button button-primary" type="submit">保存 Cookie 配置</button>
+    </div>
+  </form>
+
+  <form method="post" action="{{ url_for('push_config_page') }}" class="panel stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div><p class="eyebrow">NOTIFICATION</p><h2>推送配置</h2><p class="muted">推送方式独立保存，留空密钥会保留已保存值。</p></div>
     <div class="form-row single">
       <div class="field">
         <label for="push_method">推送方式</label>
@@ -36,7 +45,7 @@
       </div>
     </details>
     <div class="form-actions">
-      <button class="button button-primary" type="submit">验证并保存</button>
+      <button class="button button-primary" type="submit">保存推送配置</button>
     </div>
   </form>
 
@@ -59,7 +68,7 @@
   <form method="post" action="{{ url_for('schedule_page') }}" class="panel stack schedule-panel">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="switch-row">
-      <div><p class="eyebrow">AUTOMATION</p><h2>每日自动运行</h2><p class="muted">控制台在线时按北京时间触发；当天错过会补跑一次。</p></div>
+      <div><p class="eyebrow">AUTOMATION</p><h2>每日自动运行</h2><p class="muted">按北京时间触发；如果刚开启时今天时间已过，将从明天开始。</p></div>
       <label class="switch"><input type="checkbox" name="enabled" value="1" {% if schedule.enabled %}checked{% endif %}><span></span></label>
     </div>
     <div class="field">
