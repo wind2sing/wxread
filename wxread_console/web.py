@@ -160,6 +160,7 @@ def create_app(overrides: Mapping[str, Any] | None = None) -> Flask:
             latest_run=runs[0] if runs else None,
             success_rate=success_rate,
             schedule=schedule,
+            schedule_message=_schedule_message(schedule, runs),
             next_auto_run=next_run_at(schedule),
         )
 
@@ -362,3 +363,22 @@ def _missing_push_value(push_method: str, values: Mapping[str, str]) -> str | No
     if requirement and not values.get(requirement[0]):
         return requirement[1]
     return None
+
+
+def _schedule_message(schedule: Mapping[str, Any], runs: list[dict[str, Any]]) -> str:
+    if not schedule.get("enabled"):
+        return "自动运行已关闭"
+    if schedule.get("last_result") != "started":
+        return schedule.get("last_message") or "尚未触发"
+    latest_scheduled = next(
+        (run for run in runs if run.get("trigger") == "scheduled"),
+        None,
+    )
+    if not latest_scheduled:
+        return schedule.get("last_message") or "尚未触发"
+    status = latest_scheduled.get("status")
+    if status == "running":
+        return "自动任务运行中"
+    label = STATUS_LABELS.get(status, status)
+    summary = latest_scheduled.get("error_summary")
+    return f"最近自动任务：{label}{'，' + summary if summary else ''}"
